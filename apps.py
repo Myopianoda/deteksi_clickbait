@@ -133,7 +133,7 @@ if menu == "Beranda":
     st.divider()
 
     st.markdown("#### Masukkan judul berita")
-    user_input = st.text_area("", placeholder="Contoh: Viral! Bocah Ini Bikin Semua Orang Tercengang...", height=100, label_visibility="collapsed")
+    user_input = st.text_area("Judul", placeholder="Contoh: Viral! Bocah Ini Bikin Semua Orang Tercengang...", height=100, label_visibility="collapsed")
 
     if st.button("Deteksi & Analisis", use_container_width=True, type="primary"):
         if not user_input.strip():
