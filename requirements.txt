@@ -1,5 +1,9 @@
 streamlit==1.32.0
+--extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.2.0
 transformers==4.39.0
 sentencepiece
 huggingface_hub
+lime
+matplotlib
+scikit-learn
