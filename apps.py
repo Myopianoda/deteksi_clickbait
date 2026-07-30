@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re as _re
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
@@ -122,6 +124,217 @@ def show_lime(lime_result):
             "Fidelitas lokal relatif rendah. Interpretasi fitur "
             "perlu dibaca sebagai pendekatan lokal, bukan penyebab "
             "pasti keputusan model."
+        )
+
+
+def _format_indonesian_list(items):
+    """Menggabungkan daftar menjadi frasa bahasa Indonesia yang alami."""
+    clean_items = [
+        str(item).strip()
+        for item in items
+        if str(item).strip()
+    ]
+
+    if not clean_items:
+        return ""
+
+    if len(clean_items) == 1:
+        return clean_items[0]
+
+    if len(clean_items) == 2:
+        return f"{clean_items[0]} dan {clean_items[1]}"
+
+    return ", ".join(clean_items[:-1]) + f", dan {clean_items[-1]}"
+
+
+def _find_language_indicators(text):
+    """
+    Mendeteksi indikasi gaya bahasa dengan aturan sederhana.
+
+    Hasilnya hanya penjelasan tambahan, bukan kelas prediksi model.
+    """
+    original_text = str(text).strip()
+    lowered_text = original_text.lower()
+
+    indicator_rules = {
+        "sensasional": [
+            r"\bheboh\b",
+            r"\bviral\b",
+            r"\bgempar\b",
+            r"\bmenggemparkan\b",
+            r"\bmengejutkan\b",
+            r"\bmencengangkan\b",
+            r"\btercengang\b",
+            r"\bluar biasa\b",
+            r"\bspektakuler\b",
+            r"\bfantastis\b",
+            r"\bbikin geger\b",
+            r"\bbikin heboh\b",
+            r"\bbikin tercengang\b",
+        ],
+        "provokatif": [
+            r"\bgeram\b",
+            r"\bmarah\b",
+            r"\bmemalukan\b",
+            r"\bskandal\b",
+            r"\bbongkar\b",
+            r"\bmembongkar\b",
+            r"\bkecam\b",
+            r"\bmengecam\b",
+            r"\bserang\b",
+            r"\bmenyerang\b",
+            r"\bboikot\b",
+            r"\bancam\b",
+            r"\bmengancam\b",
+            r"\bpengkhianat\b",
+            r"\bbikin panas\b",
+            r"\bbikin emosi\b",
+        ],
+        "membangun rasa penasaran": [
+            r"\bternyata\b",
+            r"\bini alasannya\b",
+            r"\binilah alasannya\b",
+            r"\brahasia\b",
+            r"\bsiapa sangka\b",
+            r"\btak disangka\b",
+            r"\btidak disangka\b",
+            r"\bkamu tidak akan percaya\b",
+            r"\banda tidak akan percaya\b",
+            r"\bapa yang terjadi\b",
+            r"\bbegini caranya\b",
+            r"\bbegini faktanya\b",
+            r"\bterungkap\b",
+            r"\bbikin penasaran\b",
+            r"\bnomor\s+\d+\b",
+        ],
+        "urgensi atau ajakan kuat": [
+            r"\bsegera\b",
+            r"\bjangan lewatkan\b",
+            r"\bsebelum terlambat\b",
+            r"\bwajib tahu\b",
+            r"\bharus tahu\b",
+            r"\bbaca sekarang\b",
+            r"\bcek sekarang\b",
+        ],
+    }
+
+    categories = []
+
+    for category, patterns in indicator_rules.items():
+        if any(
+            _re.search(pattern, lowered_text, flags=_re.IGNORECASE)
+            for pattern in patterns
+        ):
+            categories.append(category)
+
+    has_repeated_punctuation = bool(
+        _re.search(r"!{2,}|\?{2,}|!\?|\?!|\.{3,}", original_text)
+    )
+    has_exclamation = "!" in original_text
+    has_uppercase_emphasis = any(
+        word not in {"COVID", "PRESIDEN", "INDONESIA"}
+        for word in _re.findall(r"\b[A-Z]{4,}\b", original_text)
+    )
+
+    if (
+        has_repeated_punctuation
+        or has_exclamation
+        or has_uppercase_emphasis
+    ):
+        categories.append("penekanan berlebihan")
+
+    return list(dict.fromkeys(categories))
+
+
+def _get_supporting_lime_features(lime_result, limit=3):
+    """Mengambil fitur LIME terkuat yang mendukung kelas prediksi."""
+    if not lime_result:
+        return []
+
+    supporting_features = [
+        feature
+        for feature in lime_result.get("features", [])
+        if float(feature.get("weight", 0.0)) > 0
+        and str(feature.get("feature", "")).strip()
+    ]
+
+    supporting_features.sort(
+        key=lambda feature: abs(
+            float(feature.get("weight", 0.0))
+        ),
+        reverse=True,
+    )
+
+    return supporting_features[: int(limit)]
+
+
+def show_final_explanation(
+    text,
+    prediction_result,
+    positive_class_id,
+    lime_result=None,
+):
+    """Menampilkan ringkasan singkat tepat setelah hasil analisis."""
+    predicted_clickbait = (
+        int(prediction_result["label_id"])
+        == int(positive_class_id)
+    )
+
+    label = (
+        "CLICKBAIT"
+        if predicted_clickbait
+        else "NON-CLICKBAIT"
+    )
+
+    relevant_score = (
+        float(prediction_result["clickbait_score"])
+        if predicted_clickbait
+        else float(prediction_result["non_clickbait_score"])
+    )
+
+    categories = _find_language_indicators(text)
+    supporting_features = _get_supporting_lime_features(
+        lime_result=lime_result,
+        limit=3,
+    )
+
+    st.subheader("Kesimpulan")
+
+    with st.container(border=True):
+        st.markdown(
+            f"**{label}** · tingkat keyakinan **{relevant_score:.2%}**"
+        )
+
+        if categories:
+            st.markdown(
+                "**Indikasi gaya bahasa:** "
+                + _format_indonesian_list(categories)
+                + "."
+            )
+        else:
+            st.markdown(
+                "**Indikasi gaya bahasa:** tidak ada pola dominan "
+                "yang terdeteksi oleh aturan sederhana."
+            )
+
+        if supporting_features:
+            feature_names = _format_indonesian_list(
+                [
+                    f"“{feature['feature']}”"
+                    for feature in supporting_features
+                ]
+            )
+            st.markdown(
+                f"**Fitur LIME yang paling mendukung:** {feature_names}."
+            )
+        elif lime_result is None:
+            st.caption(
+                "Gunakan Prediksi + LIME untuk melihat fitur pendukung."
+            )
+
+        st.caption(
+            "Indikasi gaya bahasa merupakan penjelasan berbasis aturan, "
+            "bukan kelas tambahan dari model."
         )
 
 
@@ -408,376 +621,15 @@ elif menu == "Coba Sistem":
                 "kontribusi lokal kata dan tanda baca."
             )
 
+        show_final_explanation(
+            text=analysis["text"],
+            prediction_result=analysis["prediction"],
+            positive_class_id=runtime.positive_class_id,
+            lime_result=analysis.get("lime"),
+        )
+
     st.divider()
     st.caption(
         "Dataset CLICK-ID · Skripsi 2026 · "
         "Checkpoint target_q0150 seed 2027"
     )
-
-
-# ============================================================================
-# TAMBAHAN: PENJELASAN/KESIMPULAN OTOMATIS DI BAGIAN PALING BAWAH APLIKASI
-# Catatan: bagian ini tidak mengubah prediksi model. Kategori gaya bahasa
-# di bawah merupakan indikasi berbasis pola teks agar hasil lebih mudah
-# dipahami oleh pengguna.
-# ============================================================================
-
-import re as _re
-
-
-def _format_indonesian_list(items):
-    """Menggabungkan daftar menjadi frasa bahasa Indonesia yang alami."""
-    clean_items = [
-        str(item).strip()
-        for item in items
-        if str(item).strip()
-    ]
-
-    if not clean_items:
-        return ""
-
-    if len(clean_items) == 1:
-        return clean_items[0]
-
-    if len(clean_items) == 2:
-        return f"{clean_items[0]} dan {clean_items[1]}"
-
-    return ", ".join(clean_items[:-1]) + f", dan {clean_items[-1]}"
-
-
-def _find_language_indicators(text):
-    """
-    Mendeteksi indikasi gaya bahasa menggunakan aturan sederhana.
-
-    Hasil fungsi ini bukan kelas tambahan dari model. Aturan hanya dipakai
-    untuk membantu menjelaskan pola bahasa yang tampak pada judul.
-    """
-    original_text = str(text).strip()
-    lowered_text = original_text.lower()
-
-    indicator_rules = {
-        "sensasional": {
-            "patterns": [
-                r"\bheboh\b",
-                r"\bviral\b",
-                r"\bgempar\b",
-                r"\bmenggemparkan\b",
-                r"\bmengejutkan\b",
-                r"\bmencengangkan\b",
-                r"\btercengang\b",
-                r"\bluar biasa\b",
-                r"\bspektakuler\b",
-                r"\bfantastis\b",
-                r"\bbikin geger\b",
-                r"\bbikin heboh\b",
-                r"\bbikin tercengang\b",
-            ],
-            "explanation": (
-                "menggunakan kata yang memberi penekanan emosional atau "
-                "kesan peristiwa yang sangat luar biasa"
-            ),
-        },
-        "provokatif": {
-            "patterns": [
-                r"\bgeram\b",
-                r"\bmarah\b",
-                r"\bmemalukan\b",
-                r"\bskandal\b",
-                r"\bbongkar\b",
-                r"\bmembongkar\b",
-                r"\bkecam\b",
-                r"\bmengecam\b",
-                r"\bserang\b",
-                r"\bmenyerang\b",
-                r"\bboikot\b",
-                r"\bancam\b",
-                r"\bmengancam\b",
-                r"\bpengkhianat\b",
-                r"\bbikin panas\b",
-                r"\bbikin emosi\b",
-            ],
-            "explanation": (
-                "memakai diksi yang dapat memancing kemarahan, pertentangan, "
-                "atau reaksi emosional pembaca"
-            ),
-        },
-        "membangun rasa penasaran": {
-            "patterns": [
-                r"\bternyata\b",
-                r"\bini alasannya\b",
-                r"\binilah alasannya\b",
-                r"\brahasia\b",
-                r"\bsiapa sangka\b",
-                r"\btak disangka\b",
-                r"\btidak disangka\b",
-                r"\bkamu tidak akan percaya\b",
-                r"\banda tidak akan percaya\b",
-                r"\bapa yang terjadi\b",
-                r"\bbegini caranya\b",
-                r"\bbegini faktanya\b",
-                r"\bterungkap\b",
-                r"\bbikin penasaran\b",
-                r"\bnomor\s+\d+\b",
-            ],
-            "explanation": (
-                "menahan sebagian informasi utama sehingga pembaca didorong "
-                "untuk membuka berita demi memperoleh jawabannya"
-            ),
-        },
-        "urgensi atau ajakan kuat": {
-            "patterns": [
-                r"\bsegera\b",
-                r"\bjangan lewatkan\b",
-                r"\bsebelum terlambat\b",
-                r"\bwajib tahu\b",
-                r"\bharus tahu\b",
-                r"\bbaca sekarang\b",
-                r"\bcek sekarang\b",
-            ],
-            "explanation": (
-                "menciptakan kesan mendesak atau mendorong pembaca untuk "
-                "segera melakukan tindakan"
-            ),
-        },
-    }
-
-    indicators = []
-
-    for category, rule in indicator_rules.items():
-        matches = []
-
-        for pattern in rule["patterns"]:
-            for match in _re.finditer(
-                pattern,
-                lowered_text,
-                flags=_re.IGNORECASE,
-            ):
-                matched_text = match.group(0).strip()
-
-                if matched_text and matched_text not in matches:
-                    matches.append(matched_text)
-
-        if matches:
-            indicators.append(
-                {
-                    "category": category,
-                    "matches": matches,
-                    "explanation": rule["explanation"],
-                }
-            )
-
-    emphasis_matches = []
-
-    if _re.search(r"!{2,}|\?{2,}|!\?|\?!", original_text):
-        emphasis_matches.append("tanda baca berulang")
-
-    if original_text.count("!") >= 1:
-        emphasis_matches.append("tanda seru")
-
-    if _re.search(r"\.{3,}", original_text):
-        emphasis_matches.append("elipsis (...) ")
-
-    uppercase_words = [
-        word
-        for word in _re.findall(r"\b[A-Z]{4,}\b", original_text)
-        if word not in {"COVID", "PRESIDEN", "INDONESIA"}
-    ]
-
-    if uppercase_words:
-        emphasis_matches.append(
-            "huruf kapital pada "
-            + _format_indonesian_list(
-                [f'“{word}”' for word in uppercase_words[:3]]
-            )
-        )
-
-    emphasis_matches = list(dict.fromkeys(emphasis_matches))
-
-    if emphasis_matches:
-        indicators.append(
-            {
-                "category": "penekanan berlebihan",
-                "matches": emphasis_matches,
-                "explanation": (
-                    "menggunakan tanda baca atau bentuk penulisan yang "
-                    "meningkatkan intensitas judul"
-                ),
-            }
-        )
-
-    return indicators
-
-
-def _get_supporting_lime_features(lime_result, limit=3):
-    """Mengambil fitur LIME terkuat yang mendukung kelas prediksi."""
-    if not lime_result:
-        return []
-
-    features = lime_result.get("features", [])
-    supporting_features = [
-        feature
-        for feature in features
-        if float(feature.get("weight", 0.0)) > 0
-        and str(feature.get("feature", "")).strip()
-    ]
-
-    supporting_features.sort(
-        key=lambda feature: abs(
-            float(feature.get("weight", 0.0))
-        ),
-        reverse=True,
-    )
-
-    return supporting_features[: int(limit)]
-
-
-def show_final_explanation(
-    text,
-    prediction_result,
-    positive_class_id,
-    lime_result=None,
-):
-    """Menampilkan kesimpulan akhir otomatis setelah seluruh hasil analisis."""
-    predicted_clickbait = (
-        int(prediction_result["label_id"])
-        == int(positive_class_id)
-    )
-
-    label = (
-        "CLICKBAIT"
-        if predicted_clickbait
-        else "NON-CLICKBAIT"
-    )
-
-    relevant_score = (
-        float(prediction_result["clickbait_score"])
-        if predicted_clickbait
-        else float(prediction_result["non_clickbait_score"])
-    )
-
-    indicators = _find_language_indicators(text)
-    category_names = [
-        indicator["category"]
-        for indicator in indicators
-    ]
-
-    st.divider()
-    st.subheader("Kesimpulan Akhir")
-
-    with st.container(border=True):
-        if predicted_clickbait:
-            st.markdown(
-                f"Judul ini diprediksi sebagai **{label}** dengan "
-                f"skor clickbait **{relevant_score:.2%}**."
-            )
-
-            if category_names:
-                st.markdown(
-                    "Berdasarkan pola bahasa pada judul, sistem menemukan "
-                    "indikasi **"
-                    + _format_indonesian_list(category_names)
-                    + "**."
-                )
-            else:
-                st.markdown(
-                    "Model menemukan pola yang lebih dekat dengan kelas "
-                    "clickbait, tetapi aturan tambahan tidak menemukan kata "
-                    "atau bentuk penulisan yang cukup kuat untuk diberi "
-                    "kategori sensasional, provokatif, atau rasa penasaran."
-                )
-        else:
-            st.markdown(
-                f"Judul ini diprediksi sebagai **{label}** dengan "
-                f"skor non-clickbait **{relevant_score:.2%}**."
-            )
-
-            if category_names:
-                st.markdown(
-                    "Secara umum model menilai judul lebih dekat dengan pola "
-                    "informatif. Namun, aturan bahasa masih menemukan indikasi "
-                    "**"
-                    + _format_indonesian_list(category_names)
-                    + "**. Indikasi tersebut belum cukup untuk mengubah "
-                    "keputusan akhir model menjadi clickbait."
-                )
-            else:
-                st.markdown(
-                    "Judul cenderung menyampaikan informasi secara langsung. "
-                    "Tidak ditemukan indikasi kuat berupa bahasa sensasional, "
-                    "provokatif, rasa penasaran, urgensi, atau penekanan "
-                    "berlebihan."
-                )
-
-        if indicators:
-            st.markdown("**Alasan indikasi gaya bahasa:**")
-
-            for indicator in indicators:
-                readable_matches = _format_indonesian_list(
-                    [
-                        f'“{match.strip()}”'
-                        for match in indicator["matches"][:4]
-                    ]
-                )
-
-                st.markdown(
-                    f"- **{indicator['category'].capitalize()}**: "
-                    f"{indicator['explanation']}. "
-                    f"Indikator yang ditemukan: {readable_matches}."
-                )
-
-        supporting_features = _get_supporting_lime_features(
-            lime_result=lime_result,
-            limit=3,
-        )
-
-        if supporting_features:
-            lime_feature_names = _format_indonesian_list(
-                [
-                    f"“{feature['feature']}”"
-                    for feature in supporting_features
-                ]
-            )
-
-            predicted_class_name = lime_result.get(
-                "predicted_class_name",
-                label,
-            )
-
-            st.markdown(
-                "Berdasarkan penjelasan lokal LIME, fitur "
-                f"{lime_feature_names} termasuk fitur terkuat yang "
-                f"mendukung prediksi **{predicted_class_name}** pada judul "
-                "ini."
-            )
-        elif lime_result is None:
-            st.caption(
-                "Penjelasan kata dari LIME belum tersedia. Gunakan tombol "
-                "Prediksi + LIME untuk menambahkan informasi fitur yang "
-                "mendukung hasil prediksi."
-            )
-
-        st.info(
-            "CLICKBAIT/NON-CLICKBAIT merupakan hasil prediksi model. "
-            "Sensasional, provokatif, rasa penasaran, urgensi, dan penekanan "
-            "berlebihan merupakan indikasi berbasis aturan bahasa, bukan "
-            "kelas tambahan yang dipelajari model. Hasil ini tidak menentukan "
-            "kebenaran isi berita atau maksud penulis."
-        )
-
-
-# Pemanggilan diletakkan paling bawah agar kesimpulan menjadi bagian terakhir
-# pada halaman Coba Sistem, sesuai dengan permintaan penambahan tanpa menghapus
-# atau memindahkan kode yang sudah ada.
-if menu == "Coba Sistem":
-    _final_analysis = st.session_state.get("analysis")
-
-    if (
-        _final_analysis
-        and _final_analysis.get("text") == clean_text
-    ):
-        show_final_explanation(
-            text=_final_analysis["text"],
-            prediction_result=_final_analysis["prediction"],
-            positive_class_id=runtime.positive_class_id,
-            lime_result=_final_analysis.get("lime"),
-        )
