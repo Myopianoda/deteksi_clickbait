@@ -274,7 +274,7 @@ def show_final_explanation(
     positive_class_id,
     lime_result=None,
 ):
-    """Menampilkan ringkasan singkat tepat setelah hasil analisis."""
+    """Menampilkan kesimpulan singkat dan mudah dipahami."""
     predicted_clickbait = (
         int(prediction_result["label_id"])
         == int(positive_class_id)
@@ -286,57 +286,70 @@ def show_final_explanation(
         else "NON-CLICKBAIT"
     )
 
-    relevant_score = (
-        float(prediction_result["clickbait_score"])
-        if predicted_clickbait
-        else float(prediction_result["non_clickbait_score"])
+    confidence = float(
+        prediction_result["confidence"]
     )
 
-    categories = _find_language_indicators(text)
+    indicators = _find_language_indicators(text)
+    category_names = [
+        indicator["category"]
+        for indicator in indicators
+    ]
+
     supporting_features = _get_supporting_lime_features(
         lime_result=lime_result,
         limit=3,
     )
 
+    st.divider()
     st.subheader("Kesimpulan")
 
     with st.container(border=True):
-        st.markdown(
-            f"**{label}** · tingkat keyakinan **{relevant_score:.2%}**"
-        )
-
-        if categories:
+        if predicted_clickbait:
             st.markdown(
-                "**Indikasi gaya bahasa:** "
-                + _format_indonesian_list(categories)
+                f"Judul ini diprediksi sebagai **{label}** dengan "
+                f"tingkat keyakinan **{confidence:.2%}**. "
+                "Pola bahasanya cenderung menarik perhatian pembaca."
+            )
+        else:
+            st.markdown(
+                f"Judul ini diprediksi sebagai **{label}** dengan "
+                f"tingkat keyakinan **{confidence:.2%}**. "
+                "Judul cenderung menyampaikan informasi secara langsung."
+            )
+
+        if category_names:
+            st.markdown(
+                "**Pola yang ditemukan:** "
+                + _format_indonesian_list(category_names)
                 + "."
             )
         else:
             st.markdown(
-                "**Indikasi gaya bahasa:** tidak ada pola dominan "
-                "yang terdeteksi oleh aturan sederhana."
+                "Tidak ditemukan pola bahasa yang terlalu menonjol."
             )
 
         if supporting_features:
-            feature_names = _format_indonesian_list(
+            lime_feature_names = _format_indonesian_list(
                 [
                     f"“{feature['feature']}”"
                     for feature in supporting_features
                 ]
             )
+
             st.markdown(
-                f"**Fitur LIME yang paling mendukung:** {feature_names}."
+                f"**Fitur LIME utama:** {lime_feature_names}."
             )
+
         elif lime_result is None:
             st.caption(
-                "Gunakan Prediksi + LIME untuk melihat fitur pendukung."
+                "Gunakan Prediksi + LIME untuk melihat fitur yang "
+                "paling memengaruhi hasil."
             )
 
         st.caption(
-            "Indikasi gaya bahasa merupakan penjelasan berbasis aturan, "
-            "bukan kelas tambahan dari model."
+            "Hasil ini hanya menilai pola judul, bukan kebenaran berita."
         )
-
 
 def _open_detector():
     """Memindahkan navigasi dari halaman pengantar ke halaman prediksi."""
