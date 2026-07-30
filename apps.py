@@ -268,6 +268,26 @@ def _get_supporting_lime_features(lime_result, limit=3):
     return supporting_features[: int(limit)]
 
 
+def _describe_language_indicators(category_names):
+    """Mengubah kategori pola bahasa menjadi frasa yang mudah dipahami."""
+    descriptions = {
+        "sensasional": "bahasa sensasional",
+        "provokatif": "kata-kata yang memancing emosi",
+        "membangun rasa penasaran": "ungkapan yang membangun rasa penasaran",
+        "urgensi atau ajakan kuat": "kesan mendesak atau ajakan kuat",
+        "penekanan berlebihan": (
+            "penekanan melalui huruf kapital atau tanda baca"
+        ),
+    }
+
+    return _format_indonesian_list(
+        [
+            descriptions.get(category, category)
+            for category in category_names
+        ]
+    )
+
+
 def show_final_explanation(
     text,
     prediction_result,
@@ -290,11 +310,10 @@ def show_final_explanation(
         prediction_result["confidence"]
     )
 
-    indicators = _find_language_indicators(text)
-    category_names = [
-        indicator["category"]
-        for indicator in indicators
-    ]
+    category_names = _find_language_indicators(text)
+    language_description = _describe_language_indicators(
+        category_names
+    )
 
     supporting_features = _get_supporting_lime_features(
         lime_result=lime_result,
@@ -306,28 +325,24 @@ def show_final_explanation(
 
     with st.container(border=True):
         if predicted_clickbait:
-            st.markdown(
+            conclusion = (
                 f"Judul ini diprediksi sebagai **{label}** dengan "
                 f"tingkat keyakinan **{confidence:.2%}**. "
                 "Pola bahasanya cenderung menarik perhatian pembaca."
             )
         else:
-            st.markdown(
+            conclusion = (
                 f"Judul ini diprediksi sebagai **{label}** dengan "
                 f"tingkat keyakinan **{confidence:.2%}**. "
                 "Judul cenderung menyampaikan informasi secara langsung."
             )
 
-        if category_names:
-            st.markdown(
-                "**Pola yang ditemukan:** "
-                + _format_indonesian_list(category_names)
-                + "."
+        if language_description:
+            conclusion += (
+                f" Pola yang tampak berupa {language_description}."
             )
-        else:
-            st.markdown(
-                "Tidak ditemukan pola bahasa yang terlalu menonjol."
-            )
+
+        st.markdown(conclusion)
 
         if supporting_features:
             lime_feature_names = _format_indonesian_list(
@@ -338,18 +353,20 @@ def show_final_explanation(
             )
 
             st.markdown(
-                f"**Fitur LIME utama:** {lime_feature_names}."
+                "**Bagian yang paling mendukung prediksi menurut LIME:** "
+                f"{lime_feature_names}."
             )
 
         elif lime_result is None:
             st.caption(
-                "Gunakan Prediksi + LIME untuk melihat fitur yang "
-                "paling memengaruhi hasil."
+                "Gunakan Prediksi + LIME untuk melihat bagian judul "
+                "yang paling memengaruhi hasil."
             )
 
         st.caption(
-            "Hasil ini hanya menilai pola judul, bukan kebenaran berita."
+            "Hasil hanya menilai pola teks judul, bukan kebenaran berita."
         )
+
 
 def _open_detector():
     """Memindahkan navigasi dari halaman pengantar ke halaman prediksi."""
