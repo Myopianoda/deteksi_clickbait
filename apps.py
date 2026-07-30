@@ -125,22 +125,154 @@ def show_lime(lime_result):
         )
 
 
-try:
-    runtime = get_runtime()
-except Exception as error:
-    st.error(f"Model gagal dimuat: {error}")
-    st.stop()
+def _open_detector():
+    """Memindahkan navigasi dari halaman pengantar ke halaman prediksi."""
+    st.session_state["nav_menu"] = "Coba Sistem"
 
 
-menu = st.sidebar.selectbox(
+menu = st.sidebar.radio(
     "Menu navigasi",
-    ["Beranda", "Tentang Sistem"],
+    ["Tentang Clickbait", "Coba Sistem"],
+    key="nav_menu",
 )
 
 
-if menu == "Beranda":
+if menu == "Tentang Clickbait":
+    st.title("Mengenal Clickbait")
+    st.caption(
+        "Pahami pengertian dan ciri-cirinya sebelum mencoba sistem deteksi."
+    )
+
+    st.markdown(
+        """
+**Clickbait** adalah judul yang dibuat untuk menarik perhatian dan mendorong
+orang membuka sebuah berita atau konten. Judul seperti ini biasanya memancing
+rasa penasaran, emosi, atau rasa mendesak, tetapi tidak langsung menyampaikan
+informasi utama secara jelas.
+
+Clickbait **tidak selalu berarti hoaks**. Sebuah judul dapat bersifat clickbait
+meskipun isi beritanya benar. Perbedaannya terletak pada cara judul tersebut
+menarik perhatian pembaca.
+"""
+    )
+
+    st.subheader("Ciri-ciri yang sering ditemukan")
+    st.markdown(
+        """
+- **Menahan informasi penting**, misalnya memakai kata “ternyata” atau
+  “ini alasannya” tanpa menjelaskan jawabannya.
+- **Menggunakan bahasa emosional atau sensasional**, seperti “heboh”,
+  “mengejutkan”, atau “bikin geger”.
+- **Menciptakan rasa mendesak**, misalnya “wajib tahu”, “baca sekarang”,
+  atau “sebelum terlambat”.
+- **Menggunakan penekanan berlebihan**, seperti huruf kapital dan tanda baca
+  berulang: `!!!`, `???`, atau `...`.
+"""
+    )
+
+    st.subheader("Contoh sederhana")
+    clickbait_column, informative_column = st.columns(2)
+
+    with clickbait_column:
+        with st.container(border=True):
+            st.markdown("**Cenderung clickbait**")
+            st.markdown(
+                "“Viral! Anda Tidak Akan Percaya Apa yang Terjadi Setelah Ini...”"
+            )
+            st.caption(
+                "Informasi utama ditahan dan judul memakai kata emosional "
+                "untuk memancing rasa penasaran."
+            )
+
+    with informative_column:
+        with st.container(border=True):
+            st.markdown("**Cenderung non-clickbait**")
+            st.markdown(
+                "“BMKG Memprakirakan Hujan Lebat di Jakarta pada Jumat Sore”"
+            )
+            st.caption(
+                "Judul menyampaikan informasi utama secara langsung dan spesifik."
+            )
+
+    st.info(
+        "Satu ciri saja belum tentu membuat sebuah judul menjadi clickbait. "
+        "Penilaian perlu melihat keseluruhan pola bahasa pada judul."
+    )
+
+    st.subheader("Apa yang dilakukan sistem ini?")
+    st.markdown(
+        """
+1. Pengguna memasukkan satu judul berita berbahasa Indonesia.
+2. Model menganalisis pola kata dan tanda baca pada judul tersebut.
+3. Sistem menampilkan prediksi **CLICKBAIT** atau **NON-CLICKBAIT** beserta
+   skor keyakinannya.
+4. Fitur **LIME** dapat digunakan untuk melihat kata atau tanda baca yang
+   mendukung dan menahan hasil prediksi.
+"""
+    )
+
+    st.warning(
+        "Sistem hanya membaca teks judul. Hasil prediksi tidak menentukan "
+        "kebenaran berita, tidak mendeteksi hoaks, tidak membaca isi artikel, "
+        "dan tidak menilai kredibilitas media."
+    )
+
+    with st.expander("Informasi teknis sistem"):
+        st.markdown(
+            """
+**Arsitektur model**
+
+1. **IndoBERT** menghasilkan representasi kontekstual setiap token.
+2. **BiLSTM dua arah** memproses urutan token dari dua arah.
+3. **Attention pooling** membentuk representasi judul.
+4. **Classifier** menghasilkan skor untuk dua kelas.
+
+**Performa model pengujian**
+
+- Accuracy: **94,11%**
+- Macro-F1: **93,74%**
+- Mean flip rate tanda `!` dan `?`: **6,35%**
+
+**Konfigurasi aplikasi**
+
+- Varian pelatihan: `target_q0150`
+- Training seed: `2027`
+- LIME aplikasi: `500` sampel secara bawaan
+- Random state LIME: `42`
+"""
+        )
+
+    st.button(
+        "Mulai Coba Sistem",
+        type="primary",
+        use_container_width=True,
+        on_click=_open_detector,
+    )
+
+    st.divider()
+    st.markdown(
+        """
+**Penulis:** Rizky Syahrul Maulid  
+**Program Studi:** Teknik Informatika  
+**Institusi:** STT Wastukancana Purwakarta
+"""
+    )
+
+
+elif menu == "Coba Sistem":
+    try:
+        runtime = get_runtime()
+    except Exception as error:
+        st.error(f"Model gagal dimuat: {error}")
+        st.stop()
+
     st.title(APP_TITLE)
     st.caption(MODEL_CAPTION)
+
+    st.markdown(
+        "Masukkan judul berita untuk mengetahui apakah pola bahasanya "
+        "lebih dekat dengan **clickbait** atau **non-clickbait**."
+    )
 
     st.warning(
         "Sistem hanya menganalisis pola pada teks judul. "
@@ -280,69 +412,6 @@ if menu == "Beranda":
     st.caption(
         "Dataset CLICK-ID · Skripsi 2026 · "
         "Checkpoint target_q0150 seed 2027"
-    )
-
-
-elif menu == "Tentang Sistem":
-    st.title("Tentang Sistem")
-
-    st.markdown(
-        '''
-Sistem mengklasifikasikan judul berita berbahasa Indonesia ke dalam
-kelas **clickbait** atau **non-clickbait**. Model hanya membaca teks
-judul dan tidak membaca isi artikel.
-'''
-    )
-
-    st.subheader("Arsitektur")
-    st.markdown(
-        '''
-1. **IndoBERT** menghasilkan representasi kontekstual token.
-2. **BiLSTM dua arah** memproses urutan token dari dua arah.
-3. **Attention pooling** membentuk representasi judul.
-4. **Classifier** menghasilkan skor dua kelas.
-'''
-    )
-
-    st.subheader("Varian deployment")
-    st.write(
-        {
-            "Arsitektur": "Hybrid IndoBERT–BiLSTM",
-            "Varian pelatihan": "target_q0150",
-            "Training seed": 2027,
-            "Fokus mitigasi": "Sensitivitas terhadap tanda ! dan ?",
-            "Test accuracy": "94,11%",
-            "Test Macro-F1": "93,74%",
-            "Mean flip rate !/?": "6,35%",
-        }
-    )
-
-    st.subheader("Explainable AI")
-    st.markdown(
-        '''
-LIME membuat variasi kecil dari satu judul, menjalankan prediksi ulang,
-lalu memperkirakan fitur yang mendukung atau menahan kelas prediksi.
-Penjelasan bersifat lokal dan bukan hubungan sebab-akibat.
-'''
-    )
-
-    st.subheader("Konfigurasi laporan")
-    st.write(
-        {
-            "LIME laporan": "5.000 sampel",
-            "LIME aplikasi": "500 sampel bawaan",
-            "Jumlah fitur bawaan": 10,
-            "Random state": 42,
-        }
-    )
-
-    st.divider()
-    st.markdown(
-        '''
-**Penulis:** Rizky Syahrul Maulid  
-**Program Studi:** Teknik Informatika  
-**Institusi:** STT Wastukancana Purwakarta
-'''
     )
 
 
@@ -697,9 +766,9 @@ def show_final_explanation(
 
 
 # Pemanggilan diletakkan paling bawah agar kesimpulan menjadi bagian terakhir
-# pada halaman Beranda, sesuai dengan permintaan penambahan tanpa menghapus
+# pada halaman Coba Sistem, sesuai dengan permintaan penambahan tanpa menghapus
 # atau memindahkan kode yang sudah ada.
-if menu == "Beranda":
+if menu == "Coba Sistem":
     _final_analysis = st.session_state.get("analysis")
 
     if (
